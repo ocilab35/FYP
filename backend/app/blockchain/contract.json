@@ -1,0 +1,7 @@
+{
+  "contractName": "HealthcareVerificationRegistry",
+  "address": "",
+  "abi": [],
+  "network": "simulated",
+  "note": "Run blockchain/scripts/deploy.js after npm run compile to populate ABI and address"
+}
