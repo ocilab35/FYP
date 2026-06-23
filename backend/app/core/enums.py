@@ -57,6 +57,8 @@ class NotificationType(str, enum.Enum):
     SYSTEM = "system"
     AI = "ai"
     REMINDER = "reminder"
+    PAYMENT = "payment"
+    SUBSCRIPTION = "subscription"
 
 
 class RiskLevel(str, enum.Enum):
@@ -64,6 +66,25 @@ class RiskLevel(str, enum.Enum):
     MODERATE = "moderate"
     HIGH = "high"
     CRITICAL = "critical"
+
+
+class PaymentStatus(str, enum.Enum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    REFUNDED = "refunded"
+
+
+class PaymentType(str, enum.Enum):
+    SUBSCRIPTION = "subscription"
+    APPOINTMENT = "appointment"
+
+
+class SubscriptionStatus(str, enum.Enum):
+    ACTIVE = "active"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+    PENDING = "pending"
 
 
 class MedicalRecordType(str, enum.Enum):

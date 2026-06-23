@@ -19,11 +19,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   api,
+  checkMedicationInteractions,
   extractPrescriptionMedications,
   getErrorMessage,
   Medication,
+  DrugInteractionResult,
   PrescriptionExtractionResult,
 } from "@/lib/api";
+import { MedicationAlertsWidget } from "@/components/ai";
 
 export default function MedicationsPage() {
   const router = useRouter();
@@ -41,12 +44,18 @@ export default function MedicationsPage() {
     duration: "",
     notes: "",
   });
+  const [interactions, setInteractions] = useState<DrugInteractionResult | null>(null);
+  const [interactionsLoading, setInteractionsLoading] = useState(true);
 
   const load = () =>
     api.get("/patients/medications").then((res) => setMeds(res.data.data || [])).catch(() => {});
 
   useEffect(() => {
     load();
+    checkMedicationInteractions()
+      .then(setInteractions)
+      .catch(() => {})
+      .finally(() => setInteractionsLoading(false));
   }, []);
 
   useEffect(() => {
@@ -66,6 +75,7 @@ export default function MedicationsPage() {
       setForm({ medicine_name: "", dosage: "", frequency: "", duration: "", notes: "" });
       setShowForm(false);
       load();
+      checkMedicationInteractions().then(setInteractions).catch(() => {});
     } catch (e) {
       toast.error(getErrorMessage(e));
     }
@@ -112,6 +122,7 @@ export default function MedicationsPage() {
       await api.delete(`/patients/medications/${id}`);
       toast.success("Medication removed");
       load();
+      checkMedicationInteractions().then(setInteractions).catch(() => {});
     } catch (e) {
       toast.error(getErrorMessage(e));
     }
@@ -143,12 +154,14 @@ export default function MedicationsPage() {
         }
       />
 
+      <MedicationAlertsWidget alerts={interactions} loading={interactionsLoading} />
+
       {showAiSection && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
           <DashboardCard padding="none">
             <DashboardCardHeader
               title="AI Prescription Scanner"
-              description="Upload or photograph a doctor's prescription. We extract medication details locally — no external AI keys required."
+              description="Upload or photograph a prescription. OCR extracts text, then Qwen AI structures medicines with confidence scores."
             />
             <DashboardCardBody className="space-y-4">
               {processing && (

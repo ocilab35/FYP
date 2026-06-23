@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { format } from "date-fns";
-import { Trash2, Eye, Filter } from "lucide-react";
+import { Trash2, Eye, Filter, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { DashboardCard, DashboardCardBody, DashboardCardHeader, PageHeader } from "@/components/dashboard";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { api, fetchAuthenticatedBlob, getErrorMessage, MedicalRecord, RECORD_TYPES } from "@/lib/api";
+import { api, fetchAuthenticatedBlob, getErrorMessage, MedicalRecord, MedicalReportSummary, RECORD_TYPES, summarizeMedicalRecord } from "@/lib/api";
 import { VerificationBadge } from "@/components/blockchain/verification-badge";
 
 export default function MedicalRecordsPage() {
@@ -27,6 +27,10 @@ export default function MedicalRecordsPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState("");
   const [previewMime, setPreviewMime] = useState("");
+  const [summarizingId, setSummarizingId] = useState<string | null>(null);
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summaryData, setSummaryData] = useState<MedicalReportSummary | null>(null);
+  const [summaryTitle, setSummaryTitle] = useState("");
 
   const load = useCallback(() => {
     setLoading(true);
@@ -89,6 +93,28 @@ export default function MedicalRecordsPage() {
   };
 
   const typeLabel = (t: string) => RECORD_TYPES.find((r) => r.value === t)?.label || t;
+
+  const handleSummarize = async (record: MedicalRecord) => {
+    const cached = (record.metadata_json as { ai_summary?: MedicalReportSummary } | undefined)?.ai_summary;
+    if (cached?.patient_summary) {
+      setSummaryData(cached);
+      setSummaryTitle(record.title);
+      setSummaryOpen(true);
+      return;
+    }
+    setSummarizingId(record.id);
+    try {
+      const summary = await summarizeMedicalRecord(record.id);
+      setSummaryData(summary);
+      setSummaryTitle(record.title);
+      setSummaryOpen(true);
+      load();
+    } catch (e) {
+      toast.error(getErrorMessage(e));
+    } finally {
+      setSummarizingId(null);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
@@ -158,6 +184,19 @@ export default function MedicalRecordsPage() {
                   <VerificationBadge status={r.verification_status} />
                   <div className="flex items-center gap-2">
                   <Badge variant="secondary">{typeLabel(r.record_type)}</Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 rounded-lg text-xs"
+                    onClick={() => handleSummarize(r)}
+                    disabled={summarizingId === r.id}
+                  >
+                    {summarizingId === r.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <><Sparkles className="mr-1 h-3 w-3" /> AI Summary</>
+                    )}
+                  </Button>
                   {r.file_url && (
                     <Button size="icon" variant="ghost" onClick={() => openPreview(r)} aria-label="Preview">
                       <Eye className="h-4 w-4" />
@@ -173,6 +212,42 @@ export default function MedicalRecordsPage() {
           ))}
         </div>
       )}
+
+      <Dialog open={summaryOpen} onOpenChange={setSummaryOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-auto">
+          <DialogHeader><DialogTitle>AI Summary — {summaryTitle}</DialogTitle></DialogHeader>
+          {summaryData && (
+            <div className="space-y-4 text-sm">
+              <p className="leading-relaxed text-muted-foreground">{summaryData.patient_summary}</p>
+              {summaryData.key_findings.length > 0 && (
+                <div>
+                  <p className="mb-2 font-medium">Key Findings</p>
+                  <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+                    {summaryData.key_findings.map((f, i) => <li key={i}>{f}</li>)}
+                  </ul>
+                </div>
+              )}
+              {summaryData.possible_concerns.length > 0 && (
+                <div>
+                  <p className="mb-2 font-medium">Possible Concerns</p>
+                  <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+                    {summaryData.possible_concerns.map((c, i) => <li key={i}>{c}</li>)}
+                  </ul>
+                </div>
+              )}
+              {summaryData.follow_up_recommendations.length > 0 && (
+                <div>
+                  <p className="mb-2 font-medium">Follow-up Recommendations</p>
+                  <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+                    {summaryData.follow_up_recommendations.map((r, i) => <li key={i}>{r}</li>)}
+                  </ul>
+                </div>
+              )}
+              <p className="text-[10px] text-muted-foreground/80">{summaryData.disclaimer}</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!previewUrl} onOpenChange={() => { setPreviewUrl(null); setPreviewTitle(""); setPreviewMime(""); }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">

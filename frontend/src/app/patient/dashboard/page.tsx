@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { LinkButton } from "@/components/shared/link-button";
-import { Bot, Calendar, ClipboardList, Activity, Pill, Stethoscope } from "lucide-react";
+import { Bot, Calendar, ClipboardList, Activity, Pill } from "lucide-react";
 import {
   DashboardCard,
   DashboardCardBody,
@@ -12,9 +12,11 @@ import {
   PromoPanel,
   StatusBadge,
 } from "@/components/dashboard";
+import { AIInsightsPanel } from "@/components/ai";
+import { SubscriptionWidget } from "@/components/billing";
 import { StatCard } from "@/components/shared/stat-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api, Appointment } from "@/lib/api";
+import { api, Appointment, getAIInsights, getSubscriptionStatus, AIInsights, SubscriptionStatus } from "@/lib/api";
 import { useAuthStore } from "@/store/auth-store";
 import { formatDateTime12h } from "@/lib/format";
 
@@ -22,16 +24,32 @@ export default function PatientDashboard() {
   const { user } = useAuthStore();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [insights, setInsights] = useState<AIInsights | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(true);
+  const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(true);
 
   useEffect(() => {
     api.get("/patients/appointments")
       .then((res) => setAppointments(res.data.data?.slice(0, 5) || []))
       .catch(() => {})
       .finally(() => setLoading(false));
+
+    getSubscriptionStatus()
+      .then(setSubscription)
+      .catch(() => {})
+      .finally(() => setSubscriptionLoading(false));
+
+    getAIInsights()
+      .then(setInsights)
+      .catch(() => {})
+      .finally(() => setInsightsLoading(false));
   }, []);
 
   const upcoming = appointments.filter((a) => ["pending", "confirmed"].includes(a.status));
   const greeting = new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 17 ? "Good afternoon" : "Good evening";
+  const riskScore = insights?.health_risk.risk_score;
+  const alertCount = insights?.medication_alerts.alerts.length ?? 0;
 
   return (
     <div className="space-y-8">
@@ -43,10 +61,28 @@ export default function PatientDashboard() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard role="patient" index={0} title="Upcoming" value={upcoming.length} icon={Calendar} description="Appointments scheduled" />
-        <StatCard role="patient" index={1} title="Prescriptions" value="View" icon={ClipboardList} description="Active medications" />
-        <StatCard role="patient" index={2} title="Find Care" value="Browse" icon={Stethoscope} description="Verified specialists" />
-        <StatCard role="patient" index={3} title="AI Doctor" value="Ask" icon={Bot} description="Symptom analysis" />
+        <StatCard
+          role="patient"
+          index={1}
+          title="Health Risk"
+          value={insightsLoading ? "..." : riskScore != null ? `${riskScore}%` : "—"}
+          icon={Activity}
+          description={insights?.health_risk.risk_category || "AI risk assessment"}
+        />
+        <StatCard
+          role="patient"
+          index={2}
+          title="Med Alerts"
+          value={insightsLoading ? "..." : alertCount}
+          icon={Pill}
+          description="Interaction warnings"
+        />
+        <StatCard role="patient" index={3} title="AI Doctor" value="Ask" icon={Bot} description="Conversational health assistant" />
       </div>
+
+      <AIInsightsPanel insights={insights} loading={insightsLoading && subscription?.is_active} />
+
+      <SubscriptionWidget subscription={subscription} loading={subscriptionLoading} />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <DashboardCard className="lg:col-span-2" hover>
@@ -91,10 +127,10 @@ export default function PatientDashboard() {
         <PromoPanel
           variant="patient"
           icon={Bot}
-          title="AI Doctor"
-          description="Describe your symptoms and receive instant preliminary analysis with specialist recommendations."
+          title="AI Health Assistant"
+          description="Chat with our AI assistant — it asks clinical questions first, then provides personalized guidance using your health profile."
           href="/patient/ai-doctor"
-          cta="Start consultation"
+          cta="Start conversation"
         />
       </div>
 

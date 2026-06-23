@@ -47,8 +47,7 @@ function RegisterFormContent() {
     defaultValues: { consultation_fee: 0, experience_years: 0 },
   });
 
-  const activeForm = role === "patient" ? patientForm : doctorForm;
-  const passwordWatch = activeForm.watch("password");
+  const passwordWatch = role === "patient" ? patientForm.watch("password") : doctorForm.watch("password");
 
   const onPatientSubmit = async (data: PatientRegisterValues) => {
     setLoading(true);
@@ -259,7 +258,7 @@ function RegisterFormContent() {
                         min={0}
                         max={60}
                         error={doctorForm.formState.errors.experience_years?.message}
-                        {...doctorForm.register("experience_years")}
+                        {...doctorForm.register("experience_years", { valueAsNumber: true })}
                       />
                       <AuthField
                         label="License Number"
@@ -274,7 +273,7 @@ function RegisterFormContent() {
                       min={0}
                       hint="Set your standard consultation fee"
                       error={doctorForm.formState.errors.consultation_fee?.message}
-                      {...doctorForm.register("consultation_fee")}
+                      {...doctorForm.register("consultation_fee", { valueAsNumber: true })}
                     />
                     <PasswordField
                       label="Password"

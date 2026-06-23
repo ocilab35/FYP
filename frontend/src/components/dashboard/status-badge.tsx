@@ -7,6 +7,10 @@ const appointmentStatusStyles: Record<string, string> = {
   cancelled: "bg-red-50 text-red-700 ring-red-600/15",
   rescheduled: "bg-violet-50 text-violet-700 ring-violet-600/15",
   no_show: "bg-slate-100 text-slate-600 ring-slate-500/10",
+  active: "bg-emerald-50 text-emerald-700 ring-emerald-600/15",
+  expired: "bg-slate-100 text-slate-600 ring-slate-500/10",
+  failed: "bg-red-50 text-red-700 ring-red-600/15",
+  refunded: "bg-violet-50 text-violet-700 ring-violet-600/15",
 };
 
 const riskStyles: Record<string, string> = {

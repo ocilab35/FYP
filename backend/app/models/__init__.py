@@ -25,8 +25,11 @@ from app.core.enums import (
     ConsultationSessionStatus,
     DoctorApprovalStatus,
     NotificationType,
+    PaymentStatus,
+    PaymentType,
     RiskLevel,
     SlotStatus,
+    SubscriptionStatus,
     UserRole,
     VideoCallStatus,
 )
@@ -477,4 +480,58 @@ class SystemSetting(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     value: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class Subscription(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "subscriptions"
+    __table_args__ = (
+        Index("ix_subscriptions_user_status", "user_id", "status"),
+        Index("ix_subscriptions_expiry", "expiry_date"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    plan_name: Mapped[str] = mapped_column(String(100), nullable=False, default="AI Doctor Plan")
+    amount: Mapped[float] = mapped_column(nullable=False)
+    start_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expiry_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[SubscriptionStatus] = mapped_column(
+        pg_enum(SubscriptionStatus, name="subscriptionstatus"),
+        default=SubscriptionStatus.PENDING,
+        nullable=False,
+    )
+    payment_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    user: Mapped["User"] = relationship()
+
+
+class Payment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "payments"
+    __table_args__ = (
+        Index("ix_payments_user", "user_id", "created_at"),
+        Index("ix_payments_transaction", "transaction_id"),
+        Index("ix_payments_checkout", "polar_checkout_id"),
+        UniqueConstraint("transaction_id", name="uq_payments_transaction_id"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    amount: Mapped[float] = mapped_column(nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="PKR", nullable=False)
+    payment_type: Mapped[PaymentType] = mapped_column(
+        pg_enum(PaymentType, name="paymenttype"), nullable=False
+    )
+    payment_status: Mapped[PaymentStatus] = mapped_column(
+        pg_enum(PaymentStatus, name="paymentstatus"),
+        default=PaymentStatus.PENDING,
+        nullable=False,
+    )
+    transaction_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    payment_provider: Mapped[str] = mapped_column(String(50), default="polar", nullable=False)
+    polar_checkout_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    appointment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("appointments.id", ondelete="SET NULL"), nullable=True
+    )
+    metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    user: Mapped["User"] = relationship()
+    appointment: Mapped["Appointment | None"] = relationship()
     description: Mapped[str | None] = mapped_column(Text, nullable=True)

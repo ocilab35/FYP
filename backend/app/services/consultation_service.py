@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.enums import AppointmentStatus, ConsultationSessionStatus, VideoCallStatus
 from app.core.timezone_utils import hospital_now
-from app.models import Appointment, ConsultationSession, Doctor, Patient, User, VideoCallSession
+from app.models import Appointment, ConsultationMessage, ConsultationNote, ConsultationSession, Doctor, Patient, Prescription, User, VideoCallSession
 from app.services.notification_service import (
     notify_consultation_completed,
     notify_consultation_started,
@@ -154,6 +154,64 @@ async def complete_session(db: AsyncSession, session: ConsultationSession) -> Co
         video.ended_at = now
 
     await notify_consultation_completed(db, appointment, session.id)
+
+    try:
+        from app.services.consultation_ai_summary_service import generate_consultation_summary
+        from app.services.patient_context_service import build_patient_ai_context
+
+        note_result = await db.execute(
+            select(ConsultationNote).where(ConsultationNote.appointment_id == appointment.id)
+        )
+        note = note_result.scalar_one_or_none()
+        msg_result = await db.execute(
+            select(ConsultationMessage)
+            .where(ConsultationMessage.session_id == session.id)
+            .order_by(ConsultationMessage.created_at.asc())
+        )
+        messages = [
+            {"role": m.sender_role, "content": m.content}
+            for m in msg_result.scalars().all()
+        ]
+        rx_result = await db.execute(
+            select(Prescription).where(
+                Prescription.appointment_id == appointment.id,
+                Prescription.deleted_at.is_(None),
+            )
+        )
+        prescription = rx_result.scalar_one_or_none()
+        patient_context = await build_patient_ai_context(db, appointment.patient)
+        ai_summary = await generate_consultation_summary(
+            consultation_note={
+                "symptoms": note.symptoms if note else None,
+                "diagnosis": note.diagnosis if note else None,
+                "treatment_plan": note.treatment_plan if note else None,
+                "follow_up_notes": note.follow_up_notes if note else None,
+            },
+            chat_messages=messages,
+            prescription={
+                "diagnosis": prescription.diagnosis,
+                "medications": prescription.medications,
+                "instructions": prescription.instructions,
+            }
+            if prescription
+            else None,
+            patient_context=patient_context,
+        )
+        if note:
+            draft = dict(note.draft_json or {})
+            draft["ai_summary"] = ai_summary
+            note.draft_json = draft
+        else:
+            note = ConsultationNote(
+                appointment_id=appointment.id,
+                doctor_id=appointment.doctor_id,
+                patient_id=appointment.patient_id,
+                draft_json={"ai_summary": ai_summary},
+            )
+            db.add(note)
+    except Exception:
+        pass
+
     await db.flush()
     return session
 

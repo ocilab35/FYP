@@ -53,9 +53,9 @@ export const doctorRegisterSchema = z
     cnic: z.string().regex(cnicRegex, "Use format XXXXX-XXXXXXX-X"),
     specialization: z.string().min(2, "Specialization is required"),
     qualifications: z.string().min(2, "Qualification is required"),
-    experience_years: z.coerce.number().min(0, "Min 0 years").max(60, "Max 60 years"),
+    experience_years: z.number().min(0, "Min 0 years").max(60, "Max 60 years"),
     license_number: z.string().min(5, "License number is required"),
-    consultation_fee: z.coerce.number().min(0, "Fee must be 0 or more"),
+    consultation_fee: z.number().min(0, "Fee must be 0 or more"),
     password: passwordSchema,
     confirm_password: z.string(),
   })

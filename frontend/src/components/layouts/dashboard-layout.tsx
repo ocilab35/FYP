@@ -16,6 +16,7 @@ import {
   Pill,
   Settings,
   Stethoscope,
+  CreditCard,
   Video,
   User,
   Users,
@@ -49,6 +50,7 @@ const navItems: Record<DashboardRole, { href: string; label: string; icon: React
     { href: "/patient/prescriptions", label: "Prescriptions", icon: ClipboardList },
     { href: "/patient/medical-records", label: "Medical Records", icon: Activity },
     { href: "/patient/medications", label: "Medications", icon: Pill },
+    { href: "/patient/billing/plans", label: "Billing", icon: CreditCard },
     { href: "/patient/profile", label: "Health Profile", icon: User },
   ],
   doctor: [

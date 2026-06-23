@@ -225,6 +225,7 @@ async def get_consultation_summary(
                 "diagnosis": note.diagnosis if note else None,
                 "treatment_plan": note.treatment_plan if note else None,
                 "follow_up_notes": note.follow_up_notes if note else None,
+                "ai_summary": (note.draft_json or {}).get("ai_summary") if note and note.draft_json else None,
             },
             "prescription": {
                 "diagnosis": prescription.diagnosis,

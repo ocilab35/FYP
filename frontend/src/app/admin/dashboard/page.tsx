@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { LinkButton } from "@/components/shared/link-button";
-import { Users, Stethoscope, Calendar, Bot, UserCheck, Clock, Shield, Activity } from "lucide-react";
+import { Users, Stethoscope, Calendar, Bot, UserCheck, Clock, Shield, Activity, CreditCard, DollarSign } from "lucide-react";
 import {
   DashboardCard,
   DashboardCardBody,
@@ -45,6 +45,13 @@ export default function AdminDashboard() {
         <StatCard role="admin" index={1} title="Patients" value={stats?.total_patients ?? "—"} icon={UserCheck} />
         <StatCard role="admin" index={2} title="Doctors" value={stats?.total_doctors ?? "—"} icon={Stethoscope} />
         <StatCard role="admin" index={3} title="Pending Approvals" value={stats?.pending_doctor_approvals ?? "—"} icon={Clock} trend={stats?.pending_doctor_approvals ? "Action required" : undefined} />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard role="admin" index={8} title="Total Revenue" value={stats?.total_revenue != null ? `PKR ${stats.total_revenue.toLocaleString()}` : "—"} icon={DollarSign} />
+        <StatCard role="admin" index={9} title="Subscription Revenue" value={stats?.subscription_revenue != null ? `PKR ${stats.subscription_revenue.toLocaleString()}` : "—"} icon={CreditCard} />
+        <StatCard role="admin" index={10} title="Appointment Revenue" value={stats?.appointment_revenue != null ? `PKR ${stats.appointment_revenue.toLocaleString()}` : "—"} icon={Calendar} />
+        <StatCard role="admin" index={11} title="Active Subscribers" value={stats?.active_subscribers ?? "—"} icon={Bot} description={`${stats?.expired_subscribers ?? 0} expired`} />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

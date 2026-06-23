@@ -349,6 +349,69 @@ class AIConsultationRequest(BaseModel):
     additional_info: str | None = None
 
 
+class AIChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    session_id: UUID | None = None
+
+
+class AIChatAssessment(BaseModel):
+    predicted_conditions: list[dict] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
+    recommended_specialists: list[str] = Field(default_factory=list)
+    risk_level: str = "low"
+    summary: str = ""
+    health_risk_score: int | None = Field(default=None, ge=0, le=100)
+
+
+class AIChatResponse(BaseModel):
+    session_id: UUID
+    reply: str
+    follow_up_questions: list[str] = Field(default_factory=list)
+    is_complete: bool = False
+    is_emergency: bool = False
+    disclaimer: str
+    assessment: AIChatAssessment | None = None
+    conversation: list[dict] = Field(default_factory=list)
+
+
+class HealthRiskResponse(BaseModel):
+    risk_score: int = Field(ge=0, le=100)
+    risk_category: str
+    explanation: str
+    recommendations: list[str] = Field(default_factory=list)
+    factors: list[str] = Field(default_factory=list)
+    disclaimer: str
+
+
+class DrugInteractionAlert(BaseModel):
+    type: str
+    medicines: list[str] = Field(default_factory=list)
+    risk_level: str
+    explanation: str
+    suggested_action: str
+
+
+class DrugInteractionResponse(BaseModel):
+    overall_risk: str
+    alerts: list[DrugInteractionAlert] = Field(default_factory=list)
+    disclaimer: str
+
+
+class MedicalReportSummaryResponse(BaseModel):
+    patient_summary: str
+    key_findings: list[str] = Field(default_factory=list)
+    possible_concerns: list[str] = Field(default_factory=list)
+    follow_up_recommendations: list[str] = Field(default_factory=list)
+    disclaimer: str
+
+
+class AIInsightsResponse(BaseModel):
+    health_risk: HealthRiskResponse
+    medication_alerts: DrugInteractionResponse
+    recommendations: list[str] = Field(default_factory=list)
+    chronic_monitoring: list[str] = Field(default_factory=list)
+
+
 class AIConsultationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -359,6 +422,7 @@ class AIConsultationResponse(BaseModel):
     recommended_specialists: list
     risk_level: str
     summary: str
+    conversation: list = Field(default_factory=list)
     created_at: datetime
 
 
@@ -457,3 +521,49 @@ class AdminStatsResponse(BaseModel):
     appointments_today: int
     ai_consultations_today: int
     active_users_today: int
+    total_revenue: float = 0
+    subscription_revenue: float = 0
+    appointment_revenue: float = 0
+    active_subscribers: int = 0
+    expired_subscribers: int = 0
+
+
+class CheckoutResponse(BaseModel):
+    payment_id: str
+    checkout_id: str | None = None
+    checkout_url: str | None = None
+    amount: float
+    currency: str = "PKR"
+    doctor_name: str | None = None
+
+
+class AppointmentCheckoutRequest(BaseModel):
+    doctor_id: UUID
+    appointment_date: date
+    start_time: str
+    reason: str | None = None
+
+
+class SubscriptionStatusResponse(BaseModel):
+    is_active: bool
+    plan_name: str
+    amount: float
+    status: str
+    start_date: str | None = None
+    expiry_date: str | None = None
+    days_remaining: int = 0
+    message: str | None = None
+
+
+class PaymentHistoryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    amount: float
+    currency: str
+    payment_type: str
+    payment_status: str
+    transaction_id: str | None
+    payment_provider: str
+    appointment_id: UUID | None = None
+    created_at: datetime

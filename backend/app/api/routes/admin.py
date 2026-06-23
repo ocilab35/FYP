@@ -7,9 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import require_roles
-from app.core.enums import DoctorApprovalStatus, UserRole
+from app.core.enums import DoctorApprovalStatus, PaymentStatus, PaymentType, SubscriptionStatus, UserRole
 from app.db.session import get_db
-from app.models import AIConsultation, Appointment, AuditLog, Doctor, Patient, User
+from app.models import AIConsultation, Appointment, AuditLog, Doctor, Patient, Payment, Subscription, User
 from app.schemas import AdminStatsResponse, APIResponse, PaginatedResponse, UserResponse
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -53,6 +53,34 @@ async def admin_dashboard(
         select(func.count()).select_from(User).where(User.last_login_at >= today_start)
     )).scalar() or 0
 
+    total_revenue = (await db.execute(
+        select(func.coalesce(func.sum(Payment.amount), 0)).where(
+            Payment.payment_status == PaymentStatus.COMPLETED
+        )
+    )).scalar() or 0
+    subscription_revenue = (await db.execute(
+        select(func.coalesce(func.sum(Payment.amount), 0)).where(
+            Payment.payment_status == PaymentStatus.COMPLETED,
+            Payment.payment_type == PaymentType.SUBSCRIPTION,
+        )
+    )).scalar() or 0
+    appointment_revenue = (await db.execute(
+        select(func.coalesce(func.sum(Payment.amount), 0)).where(
+            Payment.payment_status == PaymentStatus.COMPLETED,
+            Payment.payment_type == PaymentType.APPOINTMENT,
+        )
+    )).scalar() or 0
+    active_subscribers = (await db.execute(
+        select(func.count()).select_from(Subscription).where(
+            Subscription.status == SubscriptionStatus.ACTIVE
+        )
+    )).scalar() or 0
+    expired_subscribers = (await db.execute(
+        select(func.count()).select_from(Subscription).where(
+            Subscription.status == SubscriptionStatus.EXPIRED
+        )
+    )).scalar() or 0
+
     return APIResponse(
         data=AdminStatsResponse(
             total_users=total_users,
@@ -63,6 +91,11 @@ async def admin_dashboard(
             appointments_today=appts_today,
             ai_consultations_today=ai_today,
             active_users_today=active_today,
+            total_revenue=float(total_revenue),
+            subscription_revenue=float(subscription_revenue),
+            appointment_revenue=float(appointment_revenue),
+            active_subscribers=active_subscribers,
+            expired_subscribers=expired_subscribers,
         )
     )
 

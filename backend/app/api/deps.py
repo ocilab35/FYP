@@ -66,6 +66,27 @@ async def get_current_doctor(user: User = Depends(require_roles(UserRole.DOCTOR)
     return user, user.doctor
 
 
+async def require_ai_subscription(
+    user: User = Depends(require_roles(UserRole.PATIENT)),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    from app.services.subscription_service import has_active_ai_subscription
+
+    if not await has_active_ai_subscription(db, user.id):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={
+                "code": "subscription_required",
+                "message": (
+                    "Your AI Doctor subscription has expired. "
+                    "Renew your subscription to continue using AI-powered healthcare services."
+                ),
+                "renew_url": "/patient/billing/plans",
+            },
+        )
+    return user
+
+
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 

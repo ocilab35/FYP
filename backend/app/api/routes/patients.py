@@ -8,8 +8,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_patient, require_roles
-from app.services.medication_extraction_service import extract_medications_from_prescription_image
+from app.api.deps import get_current_patient, require_ai_subscription, require_roles
+from app.services.medication_extraction_service import extract_medications_from_prescription_image_async
+from app.services.patient_context_service import build_patient_ai_context
+from app.services.drug_interaction_service import analyze_drug_interactions
+from app.services.medical_report_ai_service import summarize_medical_report
 from app.core.enums import DoctorApprovalStatus, UserRole
 from app.db.session import get_db
 from app.models import Appointment, Doctor, DoctorExpertise, MedicalRecord, Medication, Notification, Patient, Prescription, User
@@ -27,6 +30,8 @@ from app.schemas import (
     MedicationResponse,
     MedicationUpdate,
     PrescriptionExtractionResponse,
+    DrugInteractionResponse,
+    MedicalReportSummaryResponse,
     NotificationResponse,
     PaginatedResponse,
     PatientProfileUpdate,
@@ -173,15 +178,11 @@ async def book_slot_appointment(
     patient_ctx: tuple[User, Patient] = Depends(get_current_patient),
     db: AsyncSession = Depends(get_db),
 ):
-    user, patient = patient_ctx
-    if data.appointment_date < date.today():
-        raise HTTPException(status_code=400, detail="Cannot book appointments in the past")
-
-    start = time.fromisoformat(data.start_time)
-    appointment = await book_appointment_slot(
-        db, patient, user, data.doctor_id, data.appointment_date, start, data.reason
+    """Direct booking disabled — appointments require payment via /payments/checkout/appointment."""
+    raise HTTPException(
+        status_code=402,
+        detail="Payment required. Use the payment checkout flow to book appointments.",
     )
-    return APIResponse(message="Appointment booked successfully", data=AppointmentResponse.model_validate(appointment))
 
 
 @router.post("/appointments", response_model=APIResponse[AppointmentResponse], status_code=201)
@@ -190,14 +191,11 @@ async def book_appointment_legacy(
     patient_ctx: tuple[User, Patient] = Depends(get_current_patient),
     db: AsyncSession = Depends(get_db),
 ):
-    """Legacy endpoint — prefer /appointments/book with slot selection."""
-    user, patient = patient_ctx
-    appt_date = data.scheduled_at.date()
-    start = data.scheduled_at.time()
-    appointment = await book_appointment_slot(
-        db, patient, user, data.doctor_id, appt_date, start, data.reason
+    """Legacy endpoint — payment required via /payments/checkout/appointment."""
+    raise HTTPException(
+        status_code=402,
+        detail="Payment required. Use the payment checkout flow to book appointments.",
     )
-    return APIResponse(message="Appointment booked", data=AppointmentResponse.model_validate(appointment))
 
 
 @router.patch("/appointments/{appointment_id}/cancel", response_model=APIResponse[AppointmentResponse])
@@ -377,18 +375,21 @@ async def delete_medical_record(
 @router.post("/medications/extract-from-prescription", response_model=APIResponse[PrescriptionExtractionResponse])
 async def extract_medications_from_prescription(
     file: UploadFile = File(...),
+    _: User = Depends(require_ai_subscription),
     patient_ctx: tuple[User, Patient] = Depends(get_current_patient),
+    db: AsyncSession = Depends(get_db),
 ):
-    _user, _patient = patient_ctx
+    _user, patient = patient_ctx
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Empty file uploaded.")
 
     try:
-        result = await asyncio.to_thread(
-            extract_medications_from_prescription_image,
+        context = await build_patient_ai_context(db, patient)
+        result = await extract_medications_from_prescription_image_async(
             content,
             file.content_type,
+            context,
         )
         data = PrescriptionExtractionResponse.model_validate(result)
     except ValueError as exc:
@@ -493,6 +494,61 @@ async def delete_medication(
         raise HTTPException(status_code=404, detail="Medication not found")
     med.deleted_at = datetime.now(timezone.utc)
     return APIResponse(message="Medication removed")
+
+
+@router.get("/medications/interactions", response_model=APIResponse[DrugInteractionResponse])
+async def check_medication_interactions(
+    _: User = Depends(require_ai_subscription),
+    patient_ctx: tuple[User, Patient] = Depends(get_current_patient),
+    db: AsyncSession = Depends(get_db),
+):
+    _, patient = patient_ctx
+    context = await build_patient_ai_context(db, patient)
+    result = await analyze_drug_interactions(
+        context.get("current_medications") or [],
+        patient.allergies,
+        patient.chronic_conditions,
+    )
+    return APIResponse(data=DrugInteractionResponse.model_validate(result))
+
+
+@router.post("/medical-records/{record_id}/summarize", response_model=APIResponse[MedicalReportSummaryResponse])
+async def summarize_medical_record_endpoint(
+    record_id: UUID,
+    _: User = Depends(require_ai_subscription),
+    patient_ctx: tuple[User, Patient] = Depends(get_current_patient),
+    db: AsyncSession = Depends(get_db),
+):
+    _, patient = patient_ctx
+    result = await db.execute(
+        select(MedicalRecord).where(
+            MedicalRecord.id == record_id,
+            MedicalRecord.patient_id == patient.id,
+            MedicalRecord.deleted_at.is_(None),
+        )
+    )
+    record = result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(status_code=404, detail="Medical record not found")
+
+    context = await build_patient_ai_context(db, patient)
+    existing_summary = (record.metadata_json or {}).get("ai_summary", {})
+    extracted_text = record.description or record.title
+
+    summary = await summarize_medical_report(
+        title=record.title,
+        record_type=record.record_type,
+        description=record.description,
+        extracted_text=extracted_text,
+        patient_context=context,
+    )
+
+    metadata = dict(record.metadata_json or {})
+    metadata["ai_summary"] = summary
+    record.metadata_json = metadata
+    await db.flush()
+
+    return APIResponse(data=MedicalReportSummaryResponse.model_validate(summary))
 
 
 @router.get("/notifications", response_model=APIResponse[list[NotificationResponse]])

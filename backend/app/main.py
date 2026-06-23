@@ -9,7 +9,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from app.api.routes import admin, ai_doctor, auth, consultations, doctors, files, patients, verification
+from app.api.routes import admin, ai_doctor, auth, consultations, doctors, files, patients, payments, verification
 from app.db.session import AsyncSessionLocal
 from app.services.consultation_service import process_session_lifecycle
 from app.core.config import settings
@@ -102,5 +102,6 @@ app.include_router(doctors.router, prefix="/api/v1")
 app.include_router(files.router, prefix="/api/v1")
 app.include_router(consultations.router, prefix="/api/v1")
 app.include_router(ai_doctor.router, prefix="/api/v1")
+app.include_router(payments.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(verification.router, prefix="/api/v1")

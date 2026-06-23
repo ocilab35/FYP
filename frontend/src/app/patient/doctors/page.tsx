@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { CheckCircle2, Search, Star, MapPin, Clock } from "lucide-react";
 import { DashboardCard, PageHeader } from "@/components/dashboard";
@@ -14,11 +15,12 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { api, AvailableSlot, DoctorSearch, getErrorMessage } from "@/lib/api";
+import { api, AvailableSlot, createAppointmentCheckout, DoctorSearch, getErrorMessage } from "@/lib/api";
 import { formatTimeRange12h } from "@/lib/format";
 import { toast } from "sonner";
 
 export default function FindDoctorsPage() {
+  const searchParams = useSearchParams();
   const [doctors, setDoctors] = useState<DoctorSearch[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -37,7 +39,15 @@ export default function FindDoctorsPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchDoctors(); }, []);
+  useEffect(() => {
+    const spec = searchParams.get("specialization");
+    if (spec) {
+      setSearch(spec);
+      fetchDoctors(spec);
+    } else {
+      fetchDoctors();
+    }
+  }, [searchParams]);
 
   const openBooking = (doc: DoctorSearch) => {
     setBookingDoctor(doc);
@@ -59,14 +69,17 @@ export default function FindDoctorsPage() {
     }
     setBooking(true);
     try {
-      await api.post("/patients/appointments/book", {
+      const session = await createAppointmentCheckout({
         doctor_id: bookingDoctor.id,
         appointment_date: bookingDate,
         start_time: selectedSlot.start_time,
         reason: bookingReason || undefined,
       });
-      setBookingSuccess(true);
-      toast.success("Appointment booked successfully!");
+      if (session.checkout_url) {
+        window.location.href = session.checkout_url;
+      } else {
+        toast.error("Could not create payment session");
+      }
     } catch (e) {
       toast.error(getErrorMessage(e));
     } finally {
@@ -177,12 +190,21 @@ export default function FindDoctorsPage() {
                     onChange={(e) => setBookingReason(e.target.value)}
                   />
                 </div>
+                <div className="rounded-xl bg-muted/40 px-4 py-3 text-sm">
+                  <p className="font-medium">Consultation Fee</p>
+                  <p className="text-lg font-bold text-[oklch(0.35_0.12_250)]">
+                    PKR {bookingDoctor.consultation_fee.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Payment required before appointment is confirmed. Slot reserved only after successful payment.
+                  </p>
+                </div>
                 <Button
                   className="w-full gradient-medical border-0 text-white h-11"
                   onClick={handleBook}
                   disabled={booking || !selectedSlot}
                 >
-                  {booking ? "Booking..." : selectedSlot ? `Confirm ${formatTimeRange12h(selectedSlot.start_time, selectedSlot.end_time)}` : "Select a slot"}
+                  {booking ? "Redirecting to payment..." : selectedSlot ? `Pay & Book · ${formatTimeRange12h(selectedSlot.start_time, selectedSlot.end_time)}` : "Select a slot"}
                 </Button>
               </div>
             </>

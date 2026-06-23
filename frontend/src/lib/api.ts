@@ -289,6 +289,31 @@ export interface AppNotification {
   created_at: string;
 }
 
+export interface AIChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface AIChatAssessment {
+  predicted_conditions: { name: string; probability: number }[];
+  recommendations: string[];
+  recommended_specialists: string[];
+  risk_level: string;
+  summary: string;
+  health_risk_score?: number;
+}
+
+export interface AIChatResponse {
+  session_id: string;
+  reply: string;
+  follow_up_questions: string[];
+  is_complete: boolean;
+  is_emergency: boolean;
+  disclaimer: string;
+  assessment?: AIChatAssessment | null;
+  conversation: AIChatMessage[];
+}
+
 export interface AIConsultation {
   id: string;
   symptoms: string[];
@@ -297,7 +322,90 @@ export interface AIConsultation {
   recommended_specialists: string[];
   risk_level: string;
   summary: string;
+  conversation?: AIChatMessage[];
   created_at: string;
+}
+
+export interface HealthRisk {
+  risk_score: number;
+  risk_category: string;
+  explanation: string;
+  recommendations: string[];
+  factors: string[];
+  disclaimer: string;
+}
+
+export interface DrugInteractionAlert {
+  type: string;
+  medicines: string[];
+  risk_level: string;
+  explanation: string;
+  suggested_action: string;
+}
+
+export interface DrugInteractionResult {
+  overall_risk: string;
+  alerts: DrugInteractionAlert[];
+  disclaimer: string;
+}
+
+export interface MedicalReportSummary {
+  patient_summary: string;
+  key_findings: string[];
+  possible_concerns: string[];
+  follow_up_recommendations: string[];
+  disclaimer: string;
+}
+
+export interface AIInsights {
+  health_risk: HealthRisk;
+  medication_alerts: DrugInteractionResult;
+  recommendations: string[];
+  chronic_monitoring: string[];
+}
+
+export interface ConsultationAISummary {
+  chief_complaint?: string;
+  symptoms?: string;
+  discussion_summary?: string;
+  diagnosis?: string;
+  follow_up_plan?: string;
+  disclaimer?: string;
+}
+
+export async function sendAIDoctorMessage(message: string, sessionId?: string): Promise<AIChatResponse> {
+  const { data } = await api.post<APIResponse<AIChatResponse>>("/ai-doctor/chat", {
+    message,
+    session_id: sessionId || undefined,
+  });
+  return data.data;
+}
+
+export async function getHealthRisk(): Promise<HealthRisk> {
+  const { data } = await api.get<APIResponse<HealthRisk>>("/ai-doctor/health-risk");
+  return data.data;
+}
+
+export async function getMedicationAlerts(): Promise<DrugInteractionResult> {
+  const { data } = await api.get<APIResponse<DrugInteractionResult>>("/ai-doctor/medication-alerts");
+  return data.data;
+}
+
+export async function getAIInsights(): Promise<AIInsights> {
+  const { data } = await api.get<APIResponse<AIInsights>>("/ai-doctor/insights");
+  return data.data;
+}
+
+export async function summarizeMedicalRecord(recordId: string): Promise<MedicalReportSummary> {
+  const { data } = await api.post<APIResponse<MedicalReportSummary>>(
+    `/patients/medical-records/${recordId}/summarize`
+  );
+  return data.data;
+}
+
+export async function checkMedicationInteractions(): Promise<DrugInteractionResult> {
+  const { data } = await api.get<APIResponse<DrugInteractionResult>>("/patients/medications/interactions");
+  return data.data;
 }
 
 export interface AdminStats {
@@ -309,6 +417,83 @@ export interface AdminStats {
   appointments_today: number;
   ai_consultations_today: number;
   active_users_today: number;
+  total_revenue?: number;
+  subscription_revenue?: number;
+  appointment_revenue?: number;
+  active_subscribers?: number;
+  expired_subscribers?: number;
+}
+
+export interface SubscriptionStatus {
+  is_active: boolean;
+  plan_name: string;
+  amount: number;
+  status: string;
+  start_date?: string;
+  expiry_date?: string;
+  days_remaining: number;
+  message?: string | null;
+}
+
+export interface CheckoutSession {
+  payment_id: string;
+  checkout_id?: string | null;
+  checkout_url?: string | null;
+  amount: number;
+  currency: string;
+  doctor_name?: string | null;
+}
+
+export interface PaymentRecord {
+  id: string;
+  amount: number;
+  currency: string;
+  payment_type: string;
+  payment_status: string;
+  transaction_id?: string | null;
+  payment_provider: string;
+  appointment_id?: string | null;
+  created_at: string;
+}
+
+export async function getSubscriptionStatus(): Promise<SubscriptionStatus> {
+  const { data } = await api.get<APIResponse<SubscriptionStatus>>("/payments/subscription/status");
+  return data.data;
+}
+
+export async function createSubscriptionCheckout(): Promise<CheckoutSession> {
+  const { data } = await api.post<APIResponse<CheckoutSession>>("/payments/checkout/subscription");
+  return data.data;
+}
+
+export async function createAppointmentCheckout(payload: {
+  doctor_id: string;
+  appointment_date: string;
+  start_time: string;
+  reason?: string;
+}): Promise<CheckoutSession> {
+  const { data } = await api.post<APIResponse<CheckoutSession>>("/payments/checkout/appointment", payload);
+  return data.data;
+}
+
+export async function verifyCheckout(checkoutId: string): Promise<{
+  payment_id: string;
+  payment_type: string;
+  payment_status: string;
+  appointment_id?: string | null;
+}> {
+  const { data } = await api.get<APIResponse<{
+    payment_id: string;
+    payment_type: string;
+    payment_status: string;
+    appointment_id?: string | null;
+  }>>(`/payments/verify/${checkoutId}`);
+  return data.data;
+}
+
+export async function getPaymentHistory(): Promise<PaymentRecord[]> {
+  const { data } = await api.get<APIResponse<PaymentRecord[]>>("/payments/history");
+  return data.data;
 }
 
 export async function extractPrescriptionMedications(file: File): Promise<PrescriptionExtractionResult> {
@@ -329,6 +514,13 @@ export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     if (error.response?.status === 401) {
       return "Session expired. Please log in again as a patient.";
+    }
+    if (error.response?.status === 402) {
+      const detail = error.response?.data as { detail?: string | { message?: string; code?: string } };
+      if (typeof detail?.detail === "object" && detail.detail?.message) {
+        return detail.detail.message;
+      }
+      return "Subscription or payment required to continue.";
     }
     if (error.code === "ECONNABORTED") {
       return "Prescription analysis timed out. Try a clearer, well-lit photo or a smaller image.";
